@@ -12,29 +12,47 @@ current_dir = Path(__file__).parent
 parent_dir = current_dir.parent
 sys.path.append(str(parent_dir))
 
-from handlers.tarot_handlers import router as tarot_router
-from handlers.payment_handlers import router as payment_router
-
-# Загрузка переменных окружения из .env файла
-load_dotenv()
-
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
+logging.info("Запуск приложения webhook.py")
+
+# Загрузка переменных окружения из .env файла (если файл существует)
+env_path = os.path.join(parent_dir, '.env')
+if os.path.exists(env_path):
+    logging.info(f"Загрузка переменных окружения из {env_path}")
+    load_dotenv(env_path)
+else:
+    logging.info("Файл .env не найден, используем переменные окружения из системы")
+
+from handlers.tarot_handlers import router as tarot_router
+from handlers.payment_handlers import router as payment_router
 
 # --- Переменные ---
 # Токен бота из переменных окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+logging.info(f"BOT_TOKEN получен: {'Да' if BOT_TOKEN else 'Нет'}")
+
 # Render автоматически предоставляет URL в переменной RENDER_EXTERNAL_URL
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RENDER_SERVICE_URL")
+logging.info(f"RENDER_EXTERNAL_URL: {RENDER_EXTERNAL_URL}")
+
 # Путь для вебхука. Использование токена в пути повышает безопасность.
-WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}" if BOT_TOKEN else "/webhook/default"
+logging.info(f"WEBHOOK_PATH: {WEBHOOK_PATH}")
+
 # Полный URL вебхука
 WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}" if RENDER_EXTERNAL_URL else None
+logging.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
+
+# Логирование всех переменных окружения (без значений)
+logging.info(f"Доступные переменные окружения: {', '.join([k for k in os.environ.keys()])}")
 
 # --- Проверки ---
 if not BOT_TOKEN:
     logging.critical("Ошибка: BOT_TOKEN не найден в переменных окружения!")
-    sys.exit("Ошибка: BOT_TOKEN не найден в переменных окружения")
+    # Не завершаем приложение, чтобы оно могло запуститься на Render для отладки
+    # sys.exit("Ошибка: BOT_TOKEN не найден в переменных окружения")
+    logging.warning("Приложение продолжит работу без BOT_TOKEN для отладки")
 if not RENDER_EXTERNAL_URL:
     logging.warning("URL сервиса Render не найден. Убедитесь, что деплой на Render прошел успешно.")
 
