@@ -61,7 +61,8 @@ if not RENDER_EXTERNAL_URL:
 # FastAPI приложение
 app = FastAPI()
 # Aiogram бот и диспетчер
-bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+from aiogram.client.default import DefaultBotProperties
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # --- Роутеры ---

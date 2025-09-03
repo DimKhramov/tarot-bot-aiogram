@@ -30,13 +30,15 @@ if not BOT_TOKEN:
     sys.exit(1)
 
 # Инициализация бота и диспетчера
-bot = Bot(token=BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
+from aiogram.client.default import DefaultBotProperties
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+dp = Dispatcher()
 
 # Регистрация обработчиков
-register_tarot_handlers(dp)
-register_payment_handlers(dp)
+from handlers.tarot_handlers import router as tarot_router
+from handlers.payment_handlers import router as payment_router
+dp.include_router(tarot_router)
+dp.include_router(payment_router)
 
 async def main():
     """Запуск бота в режиме long polling."""
