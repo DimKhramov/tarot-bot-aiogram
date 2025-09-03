@@ -11,9 +11,9 @@ services:
         value: 3.11.4
       - key: BOT_TOKEN
         sync: false
+      - key: BOT_USERNAME
+        sync: false
+      - key: TAROT_READING_PRICE
+        sync: false
       - key: OPENAI_API_KEY
-        sync: false
-      - key: YOOKASSA_SHOP_ID
-        sync: false
-      - key: YOOKASSA_SECRET_KEY
         sync: false
