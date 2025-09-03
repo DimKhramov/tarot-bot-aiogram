@@ -10,9 +10,6 @@ from aiogram.fsm.context import FSMContext
 from openai import OpenAI
 from services.payment_service import create_invoice
 
-from services.payment_service import create_invoice
-from openai import OpenAI
-
 # Класс состояний для индивидуального гадания
 class PremiumReadingStates(StatesGroup):
     waiting_for_birthdate = State()  # Ожидание ввода даты рождения
@@ -113,6 +110,26 @@ FREE_USERS = [869218484, ]  #218484013 ID пользователей, котор
 
 # Создаем роутер для обработки команд гадания
 router = Router()
+
+# Обработчик команды /start
+@router.message(Command("start"))
+async def start_command(message: Message):
+    """Обработчик команды /start"""
+    # Создаем клавиатуру с кнопкой "Начать гадать"
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔮 Начать гадать", callback_data="start_reading")
+    builder.adjust(1)
+    
+    # Отправляем приветственное сообщение
+    await message.answer(
+        "🔮 *Добро пожаловать в Пьяное Таро!* 🍸\n\n"
+        "Я - бот-таролог с алкогольным уклоном. Я могу погадать вам на картах Таро "
+        "и дать интерпретацию с алкогольной тематикой.\n\n"
+        "Нажмите кнопку ниже, чтобы начать гадание:",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup()
+    )
 
 # Обработчик кнопки "Начать гадать"
 @router.callback_query(F.data == "start_reading")
