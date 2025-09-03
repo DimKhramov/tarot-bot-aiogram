@@ -71,17 +71,30 @@ dp.include_router(payment_router)
 
 
 # --- Логика вебхука ---
+# Флаг для отслеживания установки вебхука
+webhook_set = False
+
 @app.on_event("startup")
 async def on_startup():
     """Устанавливает вебхук при старте приложения."""
+    global webhook_set
+    
+    if webhook_set:
+        logging.info("Вебхук уже установлен.")
+        return
+        
     # Проверяем, что мы не на локальной машине и URL существует
     if RENDER_EXTERNAL_URL and WEBHOOK_URL:
-        webhook_info = await bot.get_webhook_info()
-        if webhook_info.url != WEBHOOK_URL:
-            await bot.set_webhook(url=WEBHOOK_URL)
-            logging.info(f"Вебхук установлен на: {WEBHOOK_URL}")
-        else:
-            logging.info("Вебхук уже установлен.")
+        try:
+            webhook_info = await bot.get_webhook_info()
+            if webhook_info.url != WEBHOOK_URL:
+                await bot.set_webhook(url=WEBHOOK_URL)
+                logging.info(f"Вебхук установлен на: {WEBHOOK_URL}")
+            else:
+                logging.info("Вебхук уже установлен.")
+            webhook_set = True
+        except Exception as e:
+            logging.error(f"Ошибка при установке вебхука: {e}")
     else:
         logging.warning("Не удалось установить вебхук: отсутствует URL сервиса.")
 
