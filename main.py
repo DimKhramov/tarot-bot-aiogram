@@ -7,12 +7,12 @@ from os import getenv
 sys.path.insert(0, '.')
 
 from aiogram import Bot, Dispatcher
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
-# Импортируем обработчики
-from handlers.tarot_handlers import register_tarot_handlers
-from handlers.payment_handlers import register_payment_handlers
+# Импортируем роутеры обработчиков
+from handlers.tarot_handlers import router as tarot_router
+from handlers.payment_handlers import router as payment_router
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -35,8 +35,6 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # Регистрация обработчиков
-from handlers.tarot_handlers import router as tarot_router
-from handlers.payment_handlers import router as payment_router
 dp.include_router(tarot_router)
 dp.include_router(payment_router)
 
@@ -45,6 +43,8 @@ async def main():
     # Удаляем вебхук перед запуском long polling
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Бот запущен в режиме long polling")
+    logging.info(f"Имя бота: {(await bot.get_me()).username}")
+    print("Бот успешно запущен! Отправьте команду /start в Telegram.")
     
     # Запускаем long polling
     await dp.start_polling()
