@@ -47,7 +47,7 @@ async def main():
     print("Бот успешно запущен! Отправьте команду /start в Telegram.")
     
     # Запускаем long polling
-    await dp.start_polling()
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     try:
