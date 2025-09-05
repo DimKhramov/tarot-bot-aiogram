@@ -1,10 +1,16 @@
 from aiogram import Router, F
 from aiogram.types import Message, PreCheckoutQuery, CallbackQuery
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 import asyncio
+import re
 
 from services.payment_service import create_invoice, process_successful_payment
+
+# Определяем состояния для FSM
+class PaymentStates(StatesGroup):
+    waiting_for_birthdate = State()
 
 # Создаем роутер для обработки платежей
 router = Router()
@@ -20,7 +26,7 @@ async def pre_checkout_query_handler(pre_checkout_query: PreCheckoutQuery):
 
 # Обработчик успешного платежа
 @router.message(F.successful_payment)
-async def successful_payment_handler(message: Message):
+async def successful_payment_handler(message: Message, state: FSMContext):
     """
     Обработчик успешного платежа
     """
@@ -43,64 +49,65 @@ async def successful_payment_handler(message: Message):
         payment.telegram_payment_charge_id
     )
     
-    # Показываем анимацию и генерируем гадание
-    from handlers.tarot_handlers import show_tarot_animation, generate_tarot_reading
+    # Импортируем функцию для показа премиум-гадания с анимацией
+    from handlers.tarot_handlers import show_premium_reading_with_animation
     
-    # Показываем анимацию перед выдачей расклада
-    await show_tarot_animation(message)
+    # Получаем данные пользователя из состояния
+    user_data = await state.get_data()
+    
+    # Получаем дату рождения из состояния пользователя
+    birthdate = user_data.get('birthdate', None)
+    
+    # Если дата рождения не найдена, запрашиваем её у пользователя
+    if not birthdate:
+        await message.answer(
+            "<b>🔮 Для индивидуального гадания мне нужна ваша дата рождения.</b>\n\n"
+            "Пожалуйста, введите дату рождения в формате ДД.ММ.ГГГГ (например, 01.01.1990)",
+            parse_mode="HTML"
+        )
+        
+        # Устанавливаем состояние ожидания даты рождения
+        await state.set_state(PaymentStates.waiting_for_birthdate)
+        return
+    
+    # Показываем премиум-гадание с анимацией и датой рождения
+    await show_premium_reading_with_animation(message, birthdate)
+
+# Обработчик ввода даты рождения после оплаты
+@router.message(StateFilter(PaymentStates.waiting_for_birthdate))
+async def process_birthdate_after_payment(message: Message, state: FSMContext):
+    """
+    Обработчик ввода даты рождения после оплаты
+    """
+    # Проверяем формат даты рождения
+    birthdate = message.text.strip()
+    
+    # Проверяем формат даты с помощью регулярного выражения (ДД.ММ.ГГГГ)
+    if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', birthdate):
+        await message.answer(
+            "<b>❌ Неверный формат даты.</b>\n\n"
+            "Пожалуйста, введите дату рождения в формате ДД.ММ.ГГГГ (например, 01.01.1990)",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Сохраняем дату рождения в состоянии
+    await state.update_data(birthdate=birthdate)
+    
+    # Сбрасываем состояние
+    await state.clear()
     
     # Отправляем сообщение о начале гадания
-    await message.answer('<b>🔮 Начинаю гадание...</b>', parse_mode="HTML")
-    
-    # Генерируем гадание
-    reading = generate_tarot_reading()
-    
-    # Задержка перед первой картой
-    await asyncio.sleep(2)
-    
-    # Сообщение о перемешивании карт
-    shuffling_msg = await message.answer('<b>🃏 Перемешиваю карты...</b>', parse_mode="HTML")
-    
-    # Задержка перед первой картой
-    await asyncio.sleep(3)
-    
-    # Показываем первую карту
     await message.answer(
-        f"<b>🃏 Первая карта: {reading['cards'][0]['name']}</b>\n\n"
-        f"{reading['cards'][0]['description']}\n\n"
-        f"<b>🍸 Алкогольная интерпретация:</b>\n{reading['cards'][0]['drunk_interpretation']}",
+        "<b>✅ Дата рождения принята!</b>\n\n"
+        "Начинаю подготовку индивидуального гадания с учетом вашей даты рождения...",
         parse_mode="HTML"
     )
     
-    # Сообщение о перемешивании карт перед второй картой
-    await shuffling_msg.edit_text('<b>🃏 Снова перемешиваю карты...</b>', parse_mode="HTML")
-    
-    # Задержка перед второй картой
-    await asyncio.sleep(3)
-    
-    # Показываем вторую карту
-    await message.answer(
-        f"<b>🃏 Вторая карта: {reading['cards'][1]['name']}</b>\n\n"
-        f"{reading['cards'][1]['description']}\n\n"
-        f"<b>🍸 Алкогольная интерпретация:</b>\n{reading['cards'][1]['drunk_interpretation']}",
-        parse_mode="HTML"
-    )
-    
-    # Сообщение о перемешивании карт перед третьей картой
-    await shuffling_msg.edit_text('<b>🃏 Последний раз перемешиваю карты...</b>', parse_mode="HTML")
-    
-    # Задержка перед третьей картой
-    await asyncio.sleep(3)
-    
-    # Показываем третью карту
-    await message.answer(
-        f"<b>🃏 Третья карта: {reading['cards'][2]['name']}</b>\n\n"
-        f"{reading['cards'][2]['description']}\n\n"
-        f"<b>🍸 Алкогольная интерпретация:</b>\n{reading['cards'][2]['drunk_interpretation']}",
-        parse_mode="HTML"
-    )
-    
-    # Сообщение о подготовке вердикта
+    # Показываем премиум-гадание с анимацией и датой рождения
+    await show_premium_reading_with_animation(message, birthdate)
+
+# Сообщение о подготовке вердикта
     await shuffling_msg.edit_text('<b>✨ Поддаюсь небесам и готовлю вердикт...</b>', parse_mode="HTML")
     
     # Задержка перед финальным вердиктом
