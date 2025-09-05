@@ -1,13 +1,14 @@
 import os
 import logging
 import sys
+import uvicorn
 from pathlib import Path
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
 from dotenv import load_dotenv
 
 # Добавляем родительскую директорию в sys.path для корректного импорта
-# Это важно для Render, чтобы он мог найти модули в папке handlers
+# Это важно для Replit, чтобы он мог найти модули в папке handlers
 current_dir = Path(__file__).parent
 parent_dir = current_dir.parent
 sys.path.append(str(parent_dir))
@@ -32,16 +33,16 @@ from handlers.payment_handlers import router as payment_router
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 logging.info(f"BOT_TOKEN получен: {'Да' if BOT_TOKEN else 'Нет'}")
 
-# Render автоматически предоставляет URL в переменной RENDER_EXTERNAL_URL
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RENDER_SERVICE_URL")
-logging.info(f"RENDER_EXTERNAL_URL: {RENDER_EXTERNAL_URL}")
+# Replit URL для вебхука
+REPLIT_URL = os.getenv("REPLIT_URL") or os.getenv("REPL_SLUG") and os.getenv("REPL_OWNER") and f"https://{os.getenv('REPL_SLUG')}.{os.getenv('REPL_OWNER')}.repl.co"
+logging.info(f"REPLIT_URL: {REPLIT_URL}")
 
 # Путь для вебхука. Использование токена в пути повышает безопасность.
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}" if BOT_TOKEN else "/webhook/default"
 logging.info(f"WEBHOOK_PATH: {WEBHOOK_PATH}")
 
 # Полный URL вебхука
-WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}" if RENDER_EXTERNAL_URL else None
+WEBHOOK_URL = f"{REPLIT_URL}{WEBHOOK_PATH}" if REPLIT_URL else None
 logging.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
 
 # Логирование всех переменных окружения (без значений)
@@ -50,11 +51,11 @@ logging.info(f"Доступные переменные окружения: {', '
 # --- Проверки ---
 if not BOT_TOKEN:
     logging.critical("Ошибка: BOT_TOKEN не найден в переменных окружения!")
-    # Не завершаем приложение, чтобы оно могло запуститься на Render для отладки
+    # Не завершаем приложение, чтобы оно могло запуститься на Replit для отладки
     # sys.exit("Ошибка: BOT_TOKEN не найден в переменных окружения")
     logging.warning("Приложение продолжит работу без BOT_TOKEN для отладки")
-if not RENDER_EXTERNAL_URL:
-    logging.warning("URL сервиса Render не найден. Убедитесь, что деплой на Render прошел успешно.")
+if not REPLIT_URL:
+    logging.warning("URL сервиса Replit не найден. Убедитесь, что переменные REPLIT_URL или REPL_SLUG и REPL_OWNER настроены правильно.")
 
 
 # --- Инициализация ---
@@ -84,7 +85,7 @@ async def on_startup():
         return
         
     # Проверяем, что мы не на локальной машине и URL существует
-    if RENDER_EXTERNAL_URL and WEBHOOK_URL:
+    if REPLIT_URL and WEBHOOK_URL:
         try:
             webhook_info = await bot.get_webhook_info()
             if webhook_info.url != WEBHOOK_URL:
@@ -97,6 +98,20 @@ async def on_startup():
             logging.error(f"Ошибка при установке вебхука: {e}")
     else:
         logging.warning("Не удалось установить вебхук: отсутствует URL сервиса.")
+
+# Функция для запуска вебхука из start_replit.py
+async def start_webhook():
+    """Запускает бота в режиме вебхука."""
+    logging.info("Запуск бота в режиме вебхука")
+    # Вызываем on_startup вручную, так как FastAPI не запускается напрямую
+    await on_startup()
+    # Запускаем uvicorn сервер
+    port = int(os.getenv("PORT", 8080))
+    logging.info(f"Запуск uvicorn сервера на порту {port}")
+    # Запускаем сервер в неблокирующем режиме
+    config = uvicorn.Config("api.webhook:app", host="0.0.0.0", port=port, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 @app.post(WEBHOOK_PATH)
 async def bot_webhook(update: dict):
@@ -116,5 +131,5 @@ async def on_shutdown():
 
 @app.get("/")
 def read_root():
-    """Корневой эндпоинт для проверки статуса. Render использует его для health checks."""
+    """Корневой эндпоинт для проверки статуса. Replit использует его для health checks и пингов."""
     return {"status": "ok"}

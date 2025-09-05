@@ -25,3 +25,16 @@ ENV/
 
 # Render
 .render
+
+# Replit specific files
+.replit
+replit.nix
+.breakpoints
+.cache/
+.upm/
+.config/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/

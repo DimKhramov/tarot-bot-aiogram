@@ -120,3 +120,15 @@ async def process_birthdate_after_payment(message: Message, state: FSMContext):
         f"{reading['recommended_drink']}",
         parse_mode="HTML"
     )
+    
+    # Добавляем кнопки для нового расклада и возврата назад
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔮 Сделать новый расклад", callback_data="start_reading")
+    builder.button(text="🏠 Вернуться в меню", callback_data="return_to_menu")
+    builder.adjust(1)  # Размещаем кнопки в один столбец
+    
+    await message.answer(
+        "Хотите сделать новый расклад или вернуться в главное меню?",
+        reply_markup=builder.as_markup()
+    )

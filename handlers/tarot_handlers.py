@@ -2,11 +2,14 @@ import json
 import asyncio
 import random
 import datetime
+import os
+from pathlib import Path
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, LabeledPrice
 from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter
 from openai import OpenAI
 from services.payment_service import create_invoice
 
@@ -120,6 +123,47 @@ async def generate_openai_response(prompt, model="gpt-3.5-turbo", temperature=0.
 # Список пользователей, которые получают бесплатный полный расклад
 FREE_USERS = [869218484, 218484013]  #218484013 ID пользователей, которым доступен бесплатный расклад
 
+# Максимальное количество тестовых раскладов для одного пользователя
+MAX_TEST_READINGS = 3
+
+# Путь к файлу для хранения данных о тестовых раскладах
+DATA_DIR = Path(os.path.dirname(os.path.abspath(__file__))).parent / 'data'
+TEST_READINGS_FILE = DATA_DIR / 'test_readings.json'
+
+# Создаем директорию для данных, если она не существует
+DATA_DIR.mkdir(exist_ok=True)
+
+# Словарь для отслеживания количества тестовых раскладов пользователей
+# Ключ - ID пользователя (в виде строки), значение - количество тестовых раскладов
+TEST_READINGS_COUNT = {}
+
+# Функция для загрузки данных о тестовых раскладах из файла
+def load_test_readings_data():
+    """Загружает данные о тестовых раскладах из JSON-файла"""
+    global TEST_READINGS_COUNT
+    try:
+        if TEST_READINGS_FILE.exists():
+            with open(TEST_READINGS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Преобразуем ключи из строк в целые числа
+                TEST_READINGS_COUNT = {int(k): v for k, v in data.items()}
+    except Exception as e:
+        print(f"Ошибка при загрузке данных о тестовых раскладах: {e}")
+
+# Функция для сохранения данных о тестовых раскладах в файл
+def save_test_readings_data():
+    """Сохраняет данные о тестовых раскладах в JSON-файл"""
+    try:
+        # Преобразуем ключи из целых чисел в строки для JSON
+        data = {str(k): v for k, v in TEST_READINGS_COUNT.items()}
+        with open(TEST_READINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Ошибка при сохранении данных о тестовых раскладах: {e}")
+
+# Загружаем данные при запуске модуля
+load_test_readings_data()
+
 # Создаем роутер для обработки команд гадания
 router = Router()
 
@@ -135,11 +179,19 @@ async def start_command(message: Message):
     builder.button(text="🧪 Тест", callback_data="test_reading")
     builder.adjust(1, 1, 1)
     
+    # Получаем ID пользователя
+    user_id = message.from_user.id
+    
+    # Проверяем, сколько раз пользователь уже делал тестовый расклад
+    test_count = TEST_READINGS_COUNT.get(user_id, 0)
+    remaining_tests = max(0, MAX_TEST_READINGS - test_count)
+    
     # Отправляем приветственное сообщение
     await message.answer(
         "🔮 <b>Добро пожаловать в Пьяное Таро!</b> 🍸\n\n"
         "Я - бот-таролог с алкогольным уклоном. Я могу погадать вам на картах Таро "
         "и дать интерпретацию с алкогольной тематикой.\n\n"
+        f"У вас осталось <b>{remaining_tests} из {MAX_TEST_READINGS}</b> бесплатных тестовых раскладов.\n\n"
         "Нажмите кнопку ниже, чтобы начать гадание:",
         parse_mode="HTML",
         reply_markup=builder.as_markup()
@@ -195,6 +247,18 @@ async def start_tarot_reading(callback: CallbackQuery):
         await callback.message.answer(
             f"✨ *Послание таролога:*\n\n{tarot_message}",
             parse_mode="Markdown"
+        )
+        
+        # Добавляем кнопки для нового расклада и возврата в меню
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔮 Сделать новый расклад", callback_data="start_reading")
+        builder.button(text="🏠 Вернуться в меню", callback_data="return_to_menu")
+        builder.adjust(1)
+        
+        await callback.message.answer(
+            "Что бы вы хотели сделать дальше?",
+            reply_markup=builder.as_markup()
         )
     else:
         # Для обычных пользователей - предложение оплаты
@@ -398,11 +462,42 @@ async def test_tarot_reading(callback: CallbackQuery):
     """Обработчик кнопки 'Тест'"""
     await callback.answer()
     
+    # Получаем ID пользователя
+    user_id = callback.from_user.id
+    
+    # Проверяем, сколько раз пользователь уже делал тестовый расклад
+    test_count = TEST_READINGS_COUNT.get(user_id, 0)
+    
+    # Если пользователь превысил лимит тестовых раскладов
+    if test_count >= MAX_TEST_READINGS:
+        # Предлагаем пользователю сделать полный расклад
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔮 Начать гадать", callback_data="start_reading")
+        builder.adjust(1)
+        
+        await callback.message.answer(
+            "⚠️ *Вы уже использовали максимальное количество тестовых раскладов!*\n\n"
+            f"Лимит: {MAX_TEST_READINGS} тестовых раскладов.\n\n"
+            "Для полного расклада из 3 карт с рекомендацией напитка, "
+            "нажмите кнопку ниже:",
+            parse_mode="Markdown",
+            reply_markup=builder.as_markup()
+        )
+        return
+    
+    # Увеличиваем счетчик тестовых раскладов для пользователя
+    TEST_READINGS_COUNT[user_id] = test_count + 1
+    
+    # Сохраняем обновленные данные в файл
+    save_test_readings_data()
+    
     # Для всех пользователей - стандартное тестовое гадание
     await callback.message.answer(
         "🧪 *Тестовое гадание* 🧪\n\n"
         "Это бесплатное демо-гадание на одной карте.\n"
         "Вы получите базовую интерпретацию с алкогольной тематикой.\n\n"
+        f"Осталось тестовых раскладов: {MAX_TEST_READINGS - test_count - 1} из {MAX_TEST_READINGS}\n\n"
         "Подготавливаю вашу карту..."
     )
     await show_tarot_animation(callback.message)
@@ -550,6 +645,16 @@ async def show_tarot_animation(message: Message):
     await asyncio.sleep(1)
     await message.answer("🍸 Добавляю алкогольную интерпретацию...")
     await asyncio.sleep(1)
+
+# Обработчик кнопки "Вернуться в меню"
+@router.callback_query(F.data == "return_to_menu")
+async def return_to_menu(callback: CallbackQuery):
+    """Обработчик кнопки 'Вернуться в меню'"""
+    # Отвечаем на callback, чтобы убрать часы загрузки
+    await callback.answer()
+    
+    # Отправляем пользователя в главное меню
+    await start_command(callback.message)
 
 async def generate_tarot_reading(birthdate: str = None):
     """Генерирует полное гадание на Таро через GPT с учетом даты рождения для премиум-гадания"""
@@ -874,6 +979,18 @@ async def show_premium_reading_with_animation(message: Message, birthdate: str):
             f"<b>🍸 Рекомендуемый напиток:</b>\n{reading['recommended_drink']}",
             parse_mode="HTML"
         )
+        
+        # Добавляем кнопки для нового расклада и возврата назад
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔮 Сделать новый расклад", callback_data="start_reading")
+        builder.button(text="🏠 Вернуться в меню", callback_data="return_to_menu")
+        builder.adjust(1)  # Размещаем кнопки в один столбец
+        
+        await message.answer(
+            "Хотите сделать новый расклад или вернуться в главное меню?",
+            reply_markup=builder.as_markup()
+        )
     else:
         # Для обычного гадания отправляем только общее толкование
         await message.answer(
@@ -881,6 +998,54 @@ async def show_premium_reading_with_animation(message: Message, birthdate: str):
             f"<b>🍸 Рекомендуемый напиток:</b>\n{reading['recommended_drink']}",
             parse_mode="HTML"
         )
+        
+        # Добавляем кнопки для нового расклада и возврата назад
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔮 Сделать новый расклад", callback_data="start_reading")
+        builder.button(text="🏠 Вернуться в меню", callback_data="return_to_menu")
+        builder.adjust(1)  # Размещаем кнопки в один столбец
+        
+        await message.answer(
+            "Хотите сделать новый расклад или вернуться в главное меню?",
+            reply_markup=builder.as_markup()
+        )
 
 async def fetch_tarot_cards_gpt():
     """Получает карты Таро через ChatGPT API"""
+
+
+recommended_drinks = [
+    "Виски с колой - классика никогда не подводит!",
+    "Мохито - освежающий выбор для новых начинаний.",
+    "Кровавая Мэри - идеально для интуитивных решений.",
+    "Маргарита - сбалансированный выбор для любой ситуации.",
+    "Пина Колада - сладкий вкус успеха ждет вас!"
+]
+
+@router.message(Command("reading"))
+async def cmd_reading(message: Message):
+    """Обработчик команды /reading"""
+    await message.answer(
+        "🔮 *Пьяное Таро* 🍸\n\n"
+        "Я проведу для вас гадание на картах Таро с алкогольной интерпретацией!\n"
+        "Стоимость гадания: 100 Stars.\n\n"
+        "Нажмите кнопку ниже, чтобы оплатить и получить гадание.",
+        parse_mode="Markdown"
+    )
+    
+    # Создаем счет для оплаты
+    from aiogram import Bot
+    bot = Bot.get_current()
+    await create_invoice(bot, message.chat.id)
+
+async def show_tarot_animation(message: Message):
+    """Показывает анимацию перемешивания и выбора карт"""
+    await message.answer("🔮 Перемешиваю карты...")
+    await asyncio.sleep(1)
+    await message.answer("🃏 Выбираю карты для вашего расклада...")
+    await asyncio.sleep(1)
+    await message.answer("✨ Настраиваюсь на вашу энергетику...")
+    await asyncio.sleep(1)
+    await message.answer("🍸 Добавляю алкогольную интерпретацию...")
+    await asyncio.sleep(1)
